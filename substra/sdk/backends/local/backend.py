@@ -37,6 +37,10 @@ class Local(base.BaseBackend):
         return self._db.get(asset_type, key).to_response()
 
     def list(self, asset_type, filters=None):
+        # TODO
+        # unfactorize to make it more readable
+        #  explain filetrs arte applied on camel case asset
+        # explained this is a simplified verison
         db_assets = self._db.list(asset_type)
         if filters is None:
             filters = list()
@@ -55,6 +59,7 @@ class Local(base.BaseBackend):
     @staticmethod
     def __check_metadata(metadata: typing.Optional[typing.Dict[str, str]]):
         if metadata is not None:
+            # TODO 50 and 100 as global variables
             if any([len(key) > 50 for key in metadata]):
                 raise exceptions.InvalidRequest(
                     "The key in metadata cannot be more than 50 characters",
@@ -350,6 +355,7 @@ class Local(base.BaseBackend):
         return self._db.add(asset, exist_ok)
 
     def _add_data_sample(self, spec, exist_ok, spec_options):
+        # TODO: actual nice error for the user
         assert len(spec.data_manager_keys) > 0
         datasets = [
             self._db.get(schemas.Type.Dataset, dataset_key)
