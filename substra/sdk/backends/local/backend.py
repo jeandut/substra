@@ -42,8 +42,8 @@ class Local(base.BaseBackend):
     def list(self, asset_type, filters=None):
         # TODO
         # unfactorize to make it more readable
-        #  explain filetrs arte applied on camel case asset
-        # explained this is a simplified verison
+        #  explain filters are applied on camel case asset
+        # explained this is a simplified version
         db_assets = self._db.list(asset_type)
         if filters is None:
             filters = list()
@@ -102,11 +102,11 @@ class Local(base.BaseBackend):
         testtuple_keys=None,
     ):
         tuple_count = sum([
-            (len(x) if x else 0) for x in [
-                traintuple_keys,
-                composite_traintuple_keys,
-                aggregatetuple_keys,
-                testtuple_keys,
+            len(x) for x in [
+                traintuple_keys or list(),
+                composite_traintuple_keys or list(),
+                aggregatetuple_keys or list(),
+                testtuple_keys or list(),
             ]
         ])
         compute_plan = models.ComputePlan(
@@ -169,7 +169,8 @@ class Local(base.BaseBackend):
 
         return compute_plan_id, rank
 
-    def __get_all_tuples_compute_plan(self, spec: schemas.UpdateComputePlanSpec):
+    def __get_all_tuples_compute_plan(self, spec: schemas.UpdateComputePlanSpec):  # TODO type = UpdateComputePlanSpec or ComputePlan
+        # rename all_tuples in tuple_dependencies or better
         all_tuples = dict()
         traintuples = dict()
         if spec.traintuples:
@@ -496,7 +497,7 @@ class Local(base.BaseBackend):
         spec_options: dict = None
     ):
         if spec.clean_models:
-            raise ValueError(
+            warnings.warn(
                 "'clean_models=True' is not supported on the local backend."
             )
         self.__check_metadata(spec.metadata)
