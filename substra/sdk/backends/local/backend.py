@@ -38,6 +38,7 @@ class Local(base.BaseBackend):
 
     @property
     def tmp_dir(self):
+        """Temporary directory, deleted when the backend is deleted."""
         return pathlib.Path(self._tmp_dir.name)
 
     def login(self, username, password):
@@ -100,6 +101,14 @@ class Local(base.BaseBackend):
                     file_path: typing.Union[str, pathlib.Path],
                     key: str,
                     exist_ok: bool):
+        """Copy file or directory into the local temp dir to mimick
+        the remote backend that saves the files given by the user.
+
+        If exist_ok is True, no error is thrown if there is a file with the same
+        name already exists for this key.
+        This might lead to incorrect behaviour for the edge case where an asset has several files
+        (eg metrics and description), and the user gives two files with the same name.
+        """
         tmp_directory = self.tmp_dir / key
         tmp_file = tmp_directory / pathlib.Path(file_path).name
         if not tmp_directory.exists():
