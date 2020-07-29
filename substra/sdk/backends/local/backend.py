@@ -96,17 +96,23 @@ class Local(base.BaseBackend):
         """
         return key.startswith("local_")
 
-    def __copy_file(self, file_path, folder_id):
-        tmp_directory = self.tmp_dir / folder_id
+    def __copy_file(self,
+                    file_path: typing.Union[str, pathlib.Path],
+                    key: str,
+                    exist_ok: bool):
+        tmp_directory = self.tmp_dir / key
         tmp_file = tmp_directory / pathlib.Path(file_path).name
         if not tmp_directory.exists():
             pathlib.Path.mkdir(tmp_directory)
 
         if tmp_file.exists():
-            return tmp_file
-            # WARNING
-            # WOULD RAISE ERROR BUT THIS IS OK IF THE
-            # ASSET ALREADY EXISTS AND EXIST_OK = TRUE
+            if exist_ok:
+                return tmp_file
+            else:
+                raise exceptions.AlreadyExists(
+                    f"File {tmp_file.name} already exists for asset {key}",
+                    409
+                )
 
         elif pathlib.Path(file_path).is_file():
             shutil.copyfile(
@@ -333,8 +339,8 @@ class Local(base.BaseBackend):
     def __add_algo(self, model_class, spec, exist_ok, spec_options=None):
         permissions = self.__compute_permissions(spec.permissions)
         key = fs.hash_file(spec.file)
-        algo_file_path = self.__copy_file(spec.file, key)
-        algo_description_path = self.__copy_file(spec.description, key)
+        algo_file_path = self.__copy_file(spec.file, key, exist_ok)
+        algo_description_path = self.__copy_file(spec.description, key, exist_ok)
         algo = model_class(
             key=key,
             pkhash=key,
@@ -378,8 +384,8 @@ class Local(base.BaseBackend):
         self.__check_metadata(spec.metadata)
         permissions = self.__compute_permissions(spec.permissions)
         key = fs.hash_file(spec.data_opener)
-        dataset_file_path = self.__copy_file(spec.data_opener, key)
-        dataset_description_path = self.__copy_file(spec.description, key)
+        dataset_file_path = self.__copy_file(spec.data_opener, key, exist_ok)
+        dataset_description_path = self.__copy_file(spec.description, key, exist_ok)
         asset = models.Dataset(
             key=key,
             pkhash=key,
@@ -414,7 +420,7 @@ class Local(base.BaseBackend):
             for dataset_key in spec.data_manager_keys
         ]
         pkhash = fs.hash_directory(spec.path)
-        data_sample_file_path = self.__copy_file(spec.path, pkhash)
+        data_sample_file_path = self.__copy_file(spec.path, pkhash, exist_ok)
         data_sample = models.DataSample(
             pkhash=pkhash,
             owner=_BACKEND_ID,
@@ -477,8 +483,8 @@ class Local(base.BaseBackend):
                 )
 
         # Copy files to the local dir
-        objective_file_path = self.__copy_file(spec.metrics, objective_key)
-        objective_description_path = self.__copy_file(spec.description, objective_key)
+        objective_file_path = self.__copy_file(spec.metrics, objective_key, exist_ok)
+        objective_description_path = self.__copy_file(spec.description, objective_key, exist_ok)
 
         # create objective model instance
         objective = models.Objective(
