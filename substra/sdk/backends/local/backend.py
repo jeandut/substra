@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import pathlib
 import shutil
+import tempfile
 import typing
 import uuid
 
@@ -32,6 +34,11 @@ class Local(base.BaseBackend):
         # create a store to abstract the db
         self._db = dal.DataAccess(backend)
         self._worker = compute.Worker(self._db)
+        self._tmp_dir = tempfile.TemporaryDirectory(prefix="/tmp/")
+
+    @property
+    def tmp_dir(self):
+        return pathlib.Path(self._tmp_dir.name)
 
     def login(self, username, password):
         self._db.login(username, password)
@@ -88,6 +95,22 @@ class Local(base.BaseBackend):
         or remote asset.
         """
         return key.startswith("local_")
+
+    def __copy_file(self, file_path, folder_id):
+        tmp_directory = self.tmp_dir / folder_id
+        tmp_file = tmp_directory / pathlib.Path(file_path).name
+        if not tmp_directory.exists():
+            pathlib.Path.mkdir(tmp_directory)
+        if tmp_file.exists():
+            raise exceptions.InvalidRequest(
+                f"The file {tmp_file.name} already exists for the asset {folder_id}",
+                400
+            )
+        shutil.copyfile(
+            file_path,
+            tmp_file
+        )
+        return tmp_file
 
     def __add_compute_plan(
         self,
@@ -297,6 +320,8 @@ class Local(base.BaseBackend):
     def __add_algo(self, model_class, spec, exist_ok, spec_options=None):
         permissions = self.__compute_permissions(spec.permissions)
         key = fs.hash_file(spec.file)
+        algo_file_path = self.__copy_file(spec.file, key)
+        algo_description_path = self.__copy_file(spec.description, key)
         algo = model_class(
             key=key,
             pkhash=key,
@@ -310,11 +335,11 @@ class Local(base.BaseBackend):
             },
             content={
                 "hash": key,
-                "storage_address": spec.file
+                "storage_address": algo_file_path
             },
             description={
-                "hash": fs.hash_file(spec.description),
-                "storage_address": spec.description
+                "hash": fs.hash_file(algo_description_path),
+                "storage_address": algo_description_path
             },
             metadata=spec.metadata if spec.metadata else dict(),
         )
@@ -340,6 +365,8 @@ class Local(base.BaseBackend):
         self.__check_metadata(spec.metadata)
         permissions = self.__compute_permissions(spec.permissions)
         key = fs.hash_file(spec.data_opener)
+        dataset_file_path = self.__copy_file(spec.data_opener, key)
+        dataset_description_path = self.__copy_file(spec.description, key)
         asset = models.Dataset(
             key=key,
             pkhash=key,
@@ -357,11 +384,11 @@ class Local(base.BaseBackend):
             test_data_sample_keys=[],
             opener={
                 "hash": key,
-                "storage_address": spec.data_opener
+                "storage_address": dataset_file_path
             },
             description={
-                "hash": fs.hash_file(spec.description),
-                "storage_address": spec.description
+                "hash": fs.hash_file(dataset_description_path),
+                "storage_address": dataset_description_path
             },
             metadata=spec.metadata if spec.metadata else dict(),
         )
@@ -373,11 +400,12 @@ class Local(base.BaseBackend):
             self._db.get(schemas.Type.Dataset, dataset_key)
             for dataset_key in spec.data_manager_keys
         ]
-
+        pkhash = fs.hash_directory(spec.path)
+        data_sample_file_path = self.__copy_file(spec.path, pkhash)
         data_sample = models.DataSample(
-            pkhash=fs.hash_directory(spec.path),
+            pkhash=pkhash,
             owner=_BACKEND_ID,
-            path=str(spec.path),
+            path=data_sample_file_path,
             data_manager_keys=spec.data_manager_keys,
             test_only=spec.test_only,
         )
@@ -395,36 +423,18 @@ class Local(base.BaseBackend):
         return data_sample
 
     def _add_data_samples(self, spec, exist_ok, spec_options):
-        datasets = [
-            self._db.get(schemas.Type.Dataset, dataset_key)
-            for dataset_key in spec.data_manager_keys
-        ]
-
-        data_samples = [
-            models.DataSample(
-                key=fs.hash_directory(str(p)),
-                pkhash=fs.hash_directory(str(p)),
-                owner=_BACKEND_ID,
-                path=str(p),
-                data_manager_keys=spec.data_manager_keys,
-                test_only=spec.test_only,
+        data_samples = list()
+        for path in spec.paths:
+            data_sample = self._add_data_sample(
+                schemas.DataSampleSpec(
+                    path=path,
+                    data_manager_keys=spec.data_manager_keys,
+                    test_only=spec.test_only,
+                ),
+                exist_ok,
+                spec_options,
             )
-            for p in spec.paths
-        ]
-
-        data_samples = [self._db.add(a) for a in data_samples]
-
-        # update dataset(s) accordingly
-        for dataset in datasets:
-            if spec.test_only:
-                samples_list = dataset.test_data_sample_keys
-            else:
-                samples_list = dataset.train_data_sample_keys
-
-            for data_sample in data_samples:
-                if data_sample.pkhash not in samples_list:
-                    samples_list.append(data_sample.pkhash)
-
+            data_samples.append(data_sample)
         return data_samples
 
     def _add_objective(self, spec, exist_ok, spec_options):
@@ -453,6 +463,10 @@ class Local(base.BaseBackend):
                     "dataManager is already associated with a objective", 400
                 )
 
+        # Copy files to the local dir
+        objective_file_path = self.__copy_file(spec.metrics, objective_key)
+        objective_description_path = self.__copy_file(spec.description, objective_key)
+
         # create objective model instance
         objective = models.Objective(
             key=objective_key,
@@ -467,13 +481,13 @@ class Local(base.BaseBackend):
                 },
             },
             description={
-                "hash": fs.hash_file(spec.description),
-                "storage_address": spec.description
+                "hash": fs.hash_file(objective_description_path),
+                "storage_address": objective_description_path
             },
             metrics={
                 "name": spec.metrics_name,
                 "hash": objective_key,
-                "storage_address": spec.metrics
+                "storage_address": objective_file_path
             },
             metadata=spec.metadata if spec.metadata else dict(),
         )
