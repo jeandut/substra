@@ -101,15 +101,28 @@ class Local(base.BaseBackend):
         tmp_file = tmp_directory / pathlib.Path(file_path).name
         if not tmp_directory.exists():
             pathlib.Path.mkdir(tmp_directory)
+
         if tmp_file.exists():
+            return tmp_file
+            # WARNING
+            # WOULD RAISE ERROR BUT THIS IS OK IF THE
+            # ASSET ALREADY EXISTS AND EXIST_OK = TRUE
+
+        elif pathlib.Path(file_path).is_file():
+            shutil.copyfile(
+                file_path,
+                tmp_file
+            )
+        elif pathlib.Path(file_path).is_dir():
+            shutil.copytree(
+                file_path,
+                tmp_file
+            )
+        else:
             raise exceptions.InvalidRequest(
-                f"The file {tmp_file.name} already exists for the asset {folder_id}",
+                f"Could not copy {file_path}",
                 400
             )
-        shutil.copyfile(
-            file_path,
-            tmp_file
-        )
         return tmp_file
 
     def __add_compute_plan(
